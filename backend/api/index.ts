@@ -1,4 +1,4 @@
-import "./auth/passport";
+import "../src/auth/passport";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -84,3 +84,4 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
 });
+
