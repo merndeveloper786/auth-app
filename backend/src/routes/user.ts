@@ -376,7 +376,7 @@ import rateLimit from "express-rate-limit";
 
 // Analytics rate limiter
 const analyticsLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
+  windowMs: 150 * 60 * 1000, 
   max: 5000, // allow more requests for analytics
   message: "Too many analytics requests, please try again later.",
 });
@@ -602,3 +602,4 @@ router.get(
   }
 );
 export default router;
+
