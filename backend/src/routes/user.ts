@@ -371,4 +371,234 @@ router.post(
   }
 );
 
+// Import rate limiter for analytics
+import rateLimit from "express-rate-limit";
+
+// Analytics rate limiter
+const analyticsLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 5000, // allow more requests for analytics
+  message: "Too many analytics requests, please try again later.",
+});
+
+// Analytics endpoints for dashboard
+router.get(
+  "/analytics/overview",
+  analyticsLimiter,
+  authenticateToken,
+  async (req: Request, res: Response) => {
+    try {
+      const totalUsers = await prisma.user.count();
+
+      // Users registered in the last 30 days
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const newUsers = await prisma.user.count({
+        where: {
+          createdAt: {
+            gte: thirtyDaysAgo,
+          },
+        },
+      });
+
+      // Users registered in the last 7 days
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const weeklyUsers = await prisma.user.count({
+        where: {
+          createdAt: {
+            gte: sevenDaysAgo,
+          },
+        },
+      });
+
+      // Users registered today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayUsers = await prisma.user.count({
+        where: {
+          createdAt: {
+            gte: today,
+          },
+        },
+      });
+
+      res.json({
+        totalUsers,
+        newUsers,
+        weeklyUsers,
+        todayUsers,
+      });
+    } catch (error) {
+      console.error("Error fetching overview analytics:", error);
+      res.status(500).json({ error: "Failed to fetch overview analytics" });
+    }
+  }
+);
+
+// Gender distribution analytics
+router.get(
+  "/analytics/gender",
+  analyticsLimiter,
+  authenticateToken,
+  async (req: Request, res: Response) => {
+    try {
+      const genderStats = await prisma.user.groupBy({
+        by: ["gender"],
+        _count: {
+          gender: true,
+        },
+      });
+
+      const genderData = genderStats.map((stat) => ({
+        gender: stat.gender || "Not specified",
+        count: stat._count.gender,
+      }));
+
+      res.json(genderData);
+    } catch (error) {
+      console.error("Error fetching gender analytics:", error);
+      res.status(500).json({ error: "Failed to fetch gender analytics" });
+    }
+  }
+);
+
+// Age distribution analytics
+router.get(
+  "/analytics/age",
+  analyticsLimiter,
+  authenticateToken,
+  async (req: Request, res: Response) => {
+    try {
+      const users = await prisma.user.findMany({
+        select: {
+          age: true,
+        },
+        where: {
+          age: {
+            not: null,
+          },
+        },
+      });
+
+      // Group users by age ranges
+      const ageGroups = {
+        "13-17": 0,
+        "18-24": 0,
+        "25-34": 0,
+        "35-44": 0,
+        "45-54": 0,
+        "55-64": 0,
+        "65+": 0,
+      };
+
+      users.forEach((user) => {
+        const age = user.age!;
+        if (age >= 13 && age <= 17) ageGroups["13-17"]++;
+        else if (age >= 18 && age <= 24) ageGroups["18-24"]++;
+        else if (age >= 25 && age <= 34) ageGroups["25-34"]++;
+        else if (age >= 35 && age <= 44) ageGroups["35-44"]++;
+        else if (age >= 45 && age <= 54) ageGroups["45-54"]++;
+        else if (age >= 55 && age <= 64) ageGroups["55-64"]++;
+        else if (age >= 65) ageGroups["65+"]++;
+      });
+
+      const ageData = Object.entries(ageGroups).map(([range, count]) => ({
+        ageRange: range,
+        count,
+      }));
+
+      res.json(ageData);
+    } catch (error) {
+      console.error("Error fetching age analytics:", error);
+      res.status(500).json({ error: "Failed to fetch age analytics" });
+    }
+  }
+);
+
+// Registration trends (daily for last 30 days)
+router.get(
+  "/analytics/trends",
+  analyticsLimiter,
+  authenticateToken,
+  async (req: Request, res: Response) => {
+    try {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const users = await prisma.user.findMany({
+        select: {
+          createdAt: true,
+        },
+        where: {
+          createdAt: {
+            gte: thirtyDaysAgo,
+          },
+        },
+        orderBy: {
+          createdAt: "asc",
+        },
+      });
+
+      // Group by date
+      const dailyStats: { [key: string]: number } = {};
+
+      // Initialize all days with 0
+      for (let i = 29; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        const dateKey = date.toISOString().split("T")[0];
+        dailyStats[dateKey] = 0;
+      }
+
+      // Count users per day
+      users.forEach((user) => {
+        const dateKey = user.createdAt.toISOString().split("T")[0];
+        if (dailyStats.hasOwnProperty(dateKey)) {
+          dailyStats[dateKey]++;
+        }
+      });
+
+      const trendsData = Object.entries(dailyStats).map(([date, count]) => ({
+        date,
+        count,
+      }));
+
+      res.json(trendsData);
+    } catch (error) {
+      console.error("Error fetching trends analytics:", error);
+      res.status(500).json({ error: "Failed to fetch trends analytics" });
+    }
+  }
+);
+
+// Recent users
+router.get(
+  "/analytics/recent",
+  analyticsLimiter,
+  authenticateToken,
+  async (req: Request, res: Response) => {
+    try {
+      const recentUsers = await prisma.user.findMany({
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          profilePicture: true,
+          createdAt: true,
+          provider: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 10,
+      });
+
+      res.json(recentUsers);
+    } catch (error) {
+      console.error("Error fetching recent users:", error);
+      res.status(500).json({ error: "Failed to fetch recent users" });
+    }
+  }
+);
 export default router;
